@@ -1,50 +1,40 @@
 
 <!DOCTYPE html>
 
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pysp2.util.particle_properties &#8212; PySP2 1.3.0 documentation</title>
+    <title>pysp2.util.particle_properties &#8212; PySP2 1.3.1 documentation</title>
     
-    <link href="../../../_static/styles/theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
 <link href="../../../_static/styles/pydata-sphinx-theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
-  
+
     
-    <link rel="stylesheet"
-      href="../../../_static/vendor/fontawesome/5.13.0/css/all.min.css">
-    <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="../../../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
-    <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="../../../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
-  
-    
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap');
-</style>
-    
-      
-  
-    
+  <link rel="stylesheet"
+    href="../../../_static/vendor/fontawesome/5.13.0/css/all.min.css">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../../../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../../../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
 
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/styles/pydata-sphinx-theme.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-binder.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-dataframe.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-rendered-html.css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/design-style.4045f2051d55cab465a707391d5b2007.min.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/default.css" />
     
-    <link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
-  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
+
     <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
     <script src="../../../_static/jquery.js"></script>
     <script src="../../../_static/underscore.js"></script>
-    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../../../_static/doctools.js"></script>
-    <script src="../../../_static/sphinx_highlight.js"></script>
     <script src="../../../_static/clipboard.min.js"></script>
     <script src="../../../_static/copybutton.js"></script>
     <script src="../../../_static/design-tabs.js"></script>
@@ -52,13 +42,13 @@
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="docsearch:language" content="en">
+    <meta name="docsearch:language" content="None">
     
 
     <!-- Google Analytics -->
     
   </head>
-  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="80">
+  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="60">
     
     <div class="container-fluid" id="banner"></div>
 
@@ -183,6 +173,7 @@
 <span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
 <span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
 
 <span class="kn">from</span> <span class="nn">.DMTGlobals</span> <span class="kn">import</span> <span class="n">DMTGlobals</span>
 
@@ -361,7 +352,9 @@
     <span class="n">incand_accept</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">sootMass</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">OneOfEvery</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;Acquisition&#39;</span><span class="p">][</span><span class="s1">&#39;1 of Every&#39;</span><span class="p">])</span>
-    <span class="k">except</span><span class="p">:</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;One of Every field not found in inputs! Defaulting to 1, this may cause&quot;</span> <span class="o">+</span>
+                      <span class="s2">&quot;drastically underestimated mass/number concentrations.&quot;</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
         <span class="n">OneOfEvery</span> <span class="o">=</span> <span class="mi">1</span>
     
     <span class="n">IncandPos</span> <span class="o">=</span> <span class="n">particle_ds</span><span class="p">[</span><span class="s1">&#39;PkPos_ch1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
@@ -398,17 +391,28 @@
             <span class="k">continue</span>
 
         <span class="n">the_particles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">((</span><span class="n">parts_time</span><span class="p">,</span> <span class="n">scatter_accept</span><span class="p">))</span>
-        <span class="n">ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span><span class="n">ScatDiaBC50</span><span class="p">[</span><span class="n">the_particles</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="c1"># Remove particles above max size</span>
+        <span class="n">the_particles_scat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">the_particles</span><span class="p">,</span> <span class="n">ScatDiaBC50</span> <span class="o">&gt;</span> <span class="n">SpecSizeBins</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="n">ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span>
+                              <span class="n">ScatDiaBC50</span><span class="p">[</span><span class="n">the_particles_scat</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="c1"># Remove oversize particles</span>
         <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">ScatNumEnsembleBC</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span><span class="p">)</span>
-        
-        <span class="n">ind</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span><span class="n">ScatDiaSO4</span><span class="p">[</span><span class="n">the_particles</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="n">the_particles_scat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">the_particles</span><span class="p">,</span> <span class="n">ScatDiaSO4</span> <span class="o">&gt;</span> <span class="n">SpecSizeBins</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="n">ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="n">ScatDiaSO4</span><span class="p">[</span><span class="n">the_particles_scat</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="c1"># Remove oversize particles</span>
         <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">ScatNumEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span><span class="p">)</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">ScatMassEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span> <span class="o">*</span> <span class="n">ScatMassSO4</span><span class="p">[</span><span class="n">the_particles</span><span class="p">])</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">ScatMassEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span> <span class="o">*</span> <span class="n">ScatMassSO4</span><span class="p">[</span><span class="n">the_particles_scat</span><span class="p">])</span>
         
-        <span class="n">the_particles</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">((</span><span class="n">parts_time</span><span class="p">,</span> <span class="n">incand_accept</span><span class="p">))</span>
-        <span class="n">ind</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span><span class="n">SizeIncandOnly</span><span class="p">[</span><span class="n">the_particles</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="n">the_particles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">((</span><span class="n">parts_time</span><span class="p">,</span> <span class="n">incand_accept</span><span class="p">))</span>
+        <span class="n">the_particles_incan</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">the_particles</span><span class="p">,</span> <span class="n">SizeIncandOnly</span> <span class="o">&gt;</span> <span class="n">SpecSizeBins</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="n">ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">SpecSizeBins</span><span class="o">+</span><span class="n">deltaSize</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> 
+                              <span class="n">SizeIncandOnly</span><span class="p">[</span><span class="n">the_particles_incan</span><span class="p">],</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span>
+        <span class="c1"># Remove oversize particles</span>
         <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">IncanNumEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span><span class="p">)</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">IncanMassEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span> <span class="o">*</span> <span class="n">sootMass</span><span class="p">[</span><span class="n">the_particles</span><span class="p">])</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">IncanMassEnsemble</span><span class="p">[</span><span class="n">t</span><span class="p">,:],</span> <span class="n">ind</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">OneOfEvery</span> <span class="o">*</span> <span class="n">sootMass</span><span class="p">[</span><span class="n">the_particles_incan</span><span class="p">])</span>
         
             
         <span class="n">scat_parts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="p">(</span><span class="n">scatter_accept</span><span class="p">,</span> <span class="n">parts_time</span><span class="p">)</span>
@@ -595,8 +599,9 @@
       </div>
     </div>
   
-    <script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf"></script>
-  <footer class="footer mt-5 mt-md-0">
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf"></script>
+<footer class="footer mt-5 mt-md-0">
   <div class="container">
     
     <div class="footer-item">
@@ -607,7 +612,7 @@
     
     <div class="footer-item">
       <p class="sphinx-version">
-Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.3.0.<br>
+Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.5.0.<br>
 </p>
     </div>
     

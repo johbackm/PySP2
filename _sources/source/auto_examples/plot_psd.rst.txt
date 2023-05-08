@@ -47,16 +47,18 @@ Example on plotting particle concentration data timeseries
     Processing record 5000
     /home/runner/work/PySP2/PySP2/pysp2/util/peak_fit.py:76: RuntimeWarning: Mean of empty slice
       ratio = np.nanmean(
-    5877 records processed in 6.776891708374023 s
-    /home/runner/work/PySP2/PySP2/pysp2/util/particle_properties.py:37: RuntimeWarning: All-NaN slice encountered
-      PkHt_ch0 = np.nanmax(np.stack([input_ds['PkHt_ch0'].values, input_ds['FtAmp_ch0'].values]), axis=0)
+    5877 records processed in 8.297803401947021 s
     /home/runner/work/PySP2/PySP2/pysp2/util/particle_properties.py:38: RuntimeWarning: All-NaN slice encountered
+      PkHt_ch0 = np.nanmax(np.stack([input_ds['PkHt_ch0'].values, input_ds['FtAmp_ch0'].values]), axis=0)
+    /home/runner/work/PySP2/PySP2/pysp2/util/particle_properties.py:39: RuntimeWarning: All-NaN slice encountered
       PkHt_ch4 = np.nanmax(np.stack([input_ds['PkHt_ch4'].values, input_ds['FtAmp_ch4'].values]), axis=0)
     Number of scattering particles accepted = 4799
     Number of scattering particles rejected for min. peak height = 11
     Number of scattering particles rejected for peak width = 16
     Number of scattering particles rejected for fat peak = 0
     Number of scattering particles rejected for peak pos. = 91
+    /home/runner/work/PySP2/PySP2/pysp2/util/particle_properties.py:304: UserWarning: Converting non-nanosecond precision datetime values to nanosecond precision. This behavior can eventually be relaxed in xarray, as it is an artifact from pandas which is now beginning to support non-nanosecond precision values. This warning is caused by passing non-nanosecond np.datetime64 or np.timedelta64 values to the DataArray or Variable constructor; it can be silenced by converting the values to nanosecond precision ahead of time.
+      time = xr.DataArray(time, dims=('time'))
 
 
 
@@ -84,7 +86,7 @@ Example on plotting particle concentration data timeseries
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  10.683 seconds)
+   **Total running time of the script:** ( 0 minutes  13.679 seconds)
 
 
 .. _sphx_glr_download_source_auto_examples_plot_psd.py:
