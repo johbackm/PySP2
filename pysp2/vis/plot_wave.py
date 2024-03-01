@@ -71,7 +71,7 @@ def plot_wave(ds, record_no, chn, plot_fit=True,
         pos = spectra['FtPos_ch' + str(chn)].values
         base = spectra['Base_ch' + str(chn)].values
         width = spectra['PkFWHM_ch' + str(chn)].values
-        Y = _gaus(xspace, amplitude, pos, width/2., base)
+        Y = _gaus(xspace, amplitude, pos, width/2.35482, base)
         ax.plot(xspace, Y)
         ax.text(0.7, 0.5, 'Fit Pos = %3.2f' % pos,
                 transform=ax.transAxes)
