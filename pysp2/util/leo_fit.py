@@ -1,6 +1,6 @@
 import numpy as np
-from .peak_fit import _gaus
 from scipy.optimize import curve_fit
+from .peak_fit import _gaus
 
 
 def beam_shape(my_binary, beam_position_from='peak maximum', Globals=None):
@@ -39,7 +39,7 @@ def beam_shape(my_binary, beam_position_from='peak maximum', Globals=None):
 
     """
         
-    num_base_pts_2_avg = 5
+    num_base_pts_2_avg = 10
     bins=my_binary['columns']
     
     #boolean array for ok particles in the high gain channel
@@ -71,11 +71,13 @@ def beam_shape(my_binary, beam_position_from='peak maximum', Globals=None):
                                     my_high_gain_scatterers.dims['columns'])) \
                                     * np.nan
     
+    mean_high_gain_max_peak_pos = np.nanmean(my_high_gain_scatterers['PkPos_ch0'].values)
+    
     #weighted mean of beam peak position. Weight is scattering amplitude.
-    high_gain_peak_pos = int(
-        np.sum(np.multiply(my_high_gain_scatterers['PkPos_ch0'].values,
-        my_high_gain_scatterers['PkHt_ch0'].values))/ \
-                            np.sum(my_high_gain_scatterers['PkHt_ch0'].values))
+    # high_gain_peak_pos = int(
+    #     np.sum(np.multiply(my_high_gain_scatterers['PkPos_ch0'].values,
+    #     my_high_gain_scatterers['PkHt_ch0'].values))/ \
+    #                         np.sum(my_high_gain_scatterers['PkHt_ch0'].values))
     
     #loop through all particle events
     for i in my_high_gain_scatterers['event_index']:
@@ -83,13 +85,13 @@ def beam_shape(my_binary, beam_position_from='peak maximum', Globals=None):
         #base level
         base = np.mean(data[0:num_base_pts_2_avg])
         #peak height
-        peak_height = data.max()-base
+        peak_height = data.max() - base
         #peak position
         peak_pos = data.argmax()
         #normalize the profile to range [0,1]
         profile = (data - base) / peak_height
         #distance to the mean beam peak position
-        peak_difference = high_gain_peak_pos - peak_pos
+        peak_difference = mean_high_gain_max_peak_pos - peak_pos
         #insert so that the peak is at the right position (accounts for 
         #particles travelling at different speeds)
         if peak_difference > 0:
@@ -101,20 +103,69 @@ def beam_shape(my_binary, beam_position_from='peak maximum', Globals=None):
             my_high_gain_profiles[i, :] = profile
 
     #get the beam profile
-    beam_profile = np.nanmean(my_high_gain_profiles, axis=0)
-    #find values that are lower than 5% of the max value.
-    low_values = np.argwhere(beam_profile < 0.05)
-    #fit the gaussian curve to the beginning of the profile only. The tail 
-    #can deviate from zero substantially and is not of interest.
-    fit_to = low_values[low_values > high_gain_peak_pos].min()
+    beam_profile = np.nanmean(my_high_gain_profiles, axis=0)   
+    return beam_profile
+
+def leo_fit(my_binary,Globals=None):
+    bins = my_binary['columns'].astype('float').values
+    #number of points at the beginning to use for base line average
+    num_base_pts_2_avg = 10
+    num_base_pts_2_avg_2 = 10
+    max_amplitude_fraction = 0.03
     
-    #initial guess
-    p0 = np.array([beam_profile.max() - beam_profile.min(), 
-                   np.argmax(beam_profile), 20., 
-                   np.nanmin(beam_profile)]).astype(float)
-    #fit gaussian curve
-    #coeff[amplitude, peakpos, width , baseline]
-    coeff, var_matrix = curve_fit(_gaus, bins[:fit_to], beam_profile[:fit_to], 
-                                  p0=p0, method='lm', maxfev=40, ftol=1e-3)
+    bl_scattering_ok = my_binary['ScatRejectKey'].values == 0
+    bl_only_scattering_particles = np.logical_and(bl_scattering_ok, 
+                                                  my_binary['PkHt_ch1'].values < Globals.IncanMinPeakHt1)
+
+    #Particles that only scatter light and ch0 not saturated 
+    bl_only_scattering_particles_ch0 = np.logical_and(my_binary['PkHt_ch0'].values < Globals.ScatMaxPeakHt1,
+                                                      bl_only_scattering_particles)
     
-    return coeff, beam_profile
+    #split to peak height difference (in bins) for scattering only particles
+    split_to_peak_high_gain = my_binary['PkPos_ch0'].values - my_binary['PkSplitPos_ch3'].values
+    #For particles with inandesence signal, set to NaN since the peak needn't 
+    #be where the laser intensity is the highest, so se to NaN
+    split_to_peak_high_gain[~bl_only_scattering_particles_ch0] = np.nan
+    
+    #get the information about the gaussian fits
+    pos = my_binary['FtPos_ch0'].values
+    amplitude = my_binary['PkHt_ch0'].values
+    width = my_binary['PkFWHM_ch0'].values / 2.35482 #2*sqrt(2*log(2))
+    data_ch0 = my_binary['Data_ch0'].values
+    
+    #mean of the first num_base_pts_2_avg points
+    #leo_base_ch0 = np.mean(data_ch0[:, 0:num_base_pts_2_avg], axis=1)
+    #mean of the lowest 3 points
+    leo_base_ch0 = np.mean(np.sort(data_ch0[:, 0:num_base_pts_2_avg], 
+                                   axis=1)[:,:num_base_pts_2_avg_2], axis=1)
+    
+    leo_fit_max_pos = np.zeros_like(bl_only_scattering_particles,dtype=np.int64)
+    #leo_fit_max_pos_ = np.zeros_like(bl_only_scattering_particles,dtype=np.float64)
+    leo_PkHt_ch0 = np.zeros_like(my_binary['PkHt_ch0'].values)*np.nan
+    leo_PkHt_ch0_ = np.zeros_like(my_binary['PkHt_ch0'].values)*np.nan
+
+    ilocs = np.argwhere(bl_only_scattering_particles_ch0).flatten()
+    for i in ilocs:
+        leo_fit_max_pos[i] = np.round(pos[i] - width[i] * np.sqrt(2 * np.log(1. / max_amplitude_fraction)))
+        leo_fit_max_pos[i] = 22
+        fraction_of_full_power = _gaus(leo_fit_max_pos[i], 1, pos[i], width[i], 0)
+        fractional_peak_height_ch0 = data_ch0[i, leo_fit_max_pos[i]] - leo_base_ch0[i]
+        if leo_fit_max_pos[i] > 10:
+            bins_ = bins[:leo_fit_max_pos[i]]
+            #signals
+            data_ch0_ = data_ch0[i, :leo_fit_max_pos[i]]
+            leo_coeff, var_matrix = curve_fit(
+                lambda x, a: _gaus(x, a, pos[i], width[i], leo_base_ch0[i]), 
+                bins_, data_ch0_, p0=[amplitude[i]], maxfev=40, 
+                ftol=1e-3, method='lm') #bounds=(0, 1e6), method='dogbox'
+            leo_PkHt_ch0[i] = leo_coeff
+            estimated_peak_height_ch0 = fractional_peak_height_ch0 / fraction_of_full_power
+            leo_PkHt_ch0_[i] = estimated_peak_height_ch0
+    
+    output_ds = my_binary.copy()
+    output_ds['leo_FtAmp_ch0'] = (('index'), leo_PkHt_ch0)
+    output_ds['leo_FtAmp_ch0_'] = (('index'), leo_PkHt_ch0_)
+    output_ds['leo_FtMaxPos_ch0'] = (('index'), leo_fit_max_pos)
+    output_ds['leo_Base_ch0'] = (('index'), leo_base_ch0)
+    
+    return output_ds
