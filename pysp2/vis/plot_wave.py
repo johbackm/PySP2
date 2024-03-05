@@ -140,6 +140,6 @@ def plot_waves(ds, record_no, plot_fit=True):
         ax.legend(legends[i])
         if i==2:
             lines=ax.get_lines()
-            ax.plot(ds['PkSplitPos_ch3'].isel(event_index=record_no),0,'*',markersize=10,color=lines[0].get_color())
-            ax.plot(ds['PkSplitPos_ch7'].isel(event_index=record_no),0,'*',markersize=10,color=lines[1].get_color())
+            ax.plot(ds['PkSplitPos_ch3'].isel(event_index=record_no),0,'1',markersize=10,color=lines[0].get_color())
+            ax.plot(ds['PkSplitPos_ch7'].isel(event_index=record_no),0,'2',markersize=10,color=lines[1].get_color())
     return display
