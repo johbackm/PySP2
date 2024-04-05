@@ -100,12 +100,18 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
                                             dims=['index'])
     output_ds['ScatDiaBC50'] = xr.DataArray(1000*(0.013416 + 25.066*(Scatter**0.18057)),
                                             dims=['index'])
-
+    #High gain soot masses (only one calibration curve)
     sootMass_not_sat = factor * 1e-3 * (
         Globals.c0Mass1 + Globals.c1Mass1*PkHt_ch1 + Globals.c2Mass1*PkHt_ch1**2)
     sootDiam_not_sat = (sootMass_not_sat/(0.5236e-9*Globals.densityBC))**(1./3.)
+    #Low gain soot masses (first calibration curve)
     sootMass_sat = factor * 1e-3 * (
         Globals.c0Mass2 + Globals.c1Mass2*PkHt_ch5 + Globals.c2Mass2*PkHt_ch5**2)
+    if hasattr(Globals, 'IncanUsePeakHt2CalAfter'):
+        #Low gain soot masses for large particles (second calibration curve)
+        bl = PkHt_ch5 >= Globals.IncanUsePeakHt2CalAfter
+        sootMass_sat[bl] = factor * 1e-3 * (
+                Globals.c0Mass3 + Globals.c1Mass3*PkHt_ch5[bl]**Globals.c3Mass3 + Globals.c2Mass3*PkHt_ch5[bl]**2)  
     sootDiam_sat = (sootMass_sat/(0.5236e-9*Globals.densityBC))**(1./3.)
     sootMass_not_sat = np.where(accepted_incand, sootMass_not_sat, np.nan)
     sootMass_sat = np.where(accepted_incand, sootMass_sat, np.nan)
@@ -113,7 +119,11 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
     sootMass[unsat_incand] = sootMass_not_sat[unsat_incand]
     sootDiam = np.where(sat_incand, sootDiam_sat, np.nan)
     sootDiam[unsat_incand] = sootDiam_not_sat[unsat_incand]
-
+    if hasattr(Globals, 'IncanUsePeakHt2CalAfter'):
+        #Use these low gain particle masses instead
+        use_these_instead = np.logical_and(accepted_incand, bl)
+        sootMass[use_these_instead] = sootMass_sat[use_these_instead]
+        sootDiam[use_these_instead] = sootDiam_sat[use_these_instead]
     output_ds['sootMass'] = (('index'), sootMass)
     output_ds['sootDiam'] = (('index'), sootDiam)
     output_ds['ScatDiaSO4'] = output_ds['ScatDiaSO4'].where(accepted)
