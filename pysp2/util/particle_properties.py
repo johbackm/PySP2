@@ -144,8 +144,9 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         The xarray Dataset containing the housekeeping variables
     config: dict
         The .ini file loaded as a dict.
-    deltaSize: float
-        The size distribution bin width in microns.
+    deltaSize: float or str
+        The size distribution bin width in microns if input is float.
+        If 'log' then the size distribution bin width will be even in log space.
     num_bins: int
         The number of size bins
     avg_interval: int
@@ -182,7 +183,14 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
     ScatDiaSO4 = particle_ds['ScatDiaSO4'].values / 1000.
     sootMass = particle_ds['sootMass'].values
     SizeIncandOnly = particle_ds['sootDiam'].values / 1000.
-    SpecSizeBins = 0.01 + np.arange(0, num_bins, 1) * deltaSize
+    if isinstance(deltaSize, float):
+        SpecSizeBins = 0.01 + np.arange(0, num_bins, 1) * deltaSize
+    elif deltaSize == 'log':
+        SpecSizeBins = np.logspace(np.log10(0.01), np.log10(1.00), num_bins+1)
+        #SpecSizeBins = np.append(SpecSizeBins)
+        #deltaSize this to zero will make SpecSizeBins become bin edges instead of bin centres
+        deltaSize = 0
+        
     ScatNumEnsembleBC = np.zeros((len(time_bins[:-1]), num_bins))
     ScatMassEnsembleBC = np.zeros_like(ScatNumEnsembleBC)
     IncanNumEnsemble = np.zeros((len(time_bins[:-1]), num_bins))
@@ -245,7 +253,7 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         # Remove particles above max size
         the_particles_scat = np.logical_and.reduce(
             (the_particles, ScatDiaBC50 < SpecSizeBins[-1] + deltaSize / 2))
-        ind = np.searchsorted(SpecSizeBins+deltaSize / 2,
+        ind = np.searchsorted(SpecSizeBins + deltaSize / 2,
                               ScatDiaBC50[the_particles_scat], side='right')
         #np.add.at(ScatNumEnsembleBC[t,:], ind, OneOfEvery)
         np.add.at(ScatNumEnsembleBC[t,:], ind, OneOfEvery[the_particles_scat])
@@ -253,7 +261,7 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         # Remove oversize particles
         the_particles_scat = np.logical_and.reduce(
             (the_particles, ScatDiaSO4 < SpecSizeBins[-1] + deltaSize / 2))
-        ind = np.searchsorted(SpecSizeBins+deltaSize / 2, ScatDiaSO4[the_particles_scat], side='right')
+        ind = np.searchsorted(SpecSizeBins + deltaSize / 2, ScatDiaSO4[the_particles_scat], side='right')
         #np.add.at(ScatNumEnsemble[t,:], ind, OneOfEvery)
         np.add.at(ScatNumEnsemble[t,:], ind, OneOfEvery[the_particles_scat])
         #np.add.at(ScatMassEnsemble[t,:], ind, OneOfEvery * ScatMassSO4[the_particles_scat])
@@ -264,7 +272,7 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         # Remove oversize particles
         the_particles_incan = np.logical_and.reduce(
             (the_particles, SizeIncandOnly < SpecSizeBins[-1] + deltaSize / 2))
-        ind = np.searchsorted(SpecSizeBins+deltaSize / 2, 
+        ind = np.searchsorted(SpecSizeBins + deltaSize / 2, 
                               SizeIncandOnly[the_particles_incan], side='right')
         #np.add.at(IncanNumEnsemble[t,:], ind, OneOfEvery)
         np.add.at(IncanNumEnsemble[t,:], ind, OneOfEvery[the_particles_incan])
@@ -434,6 +442,12 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
     ScatNumEnsembleBC.attrs["long_name"] = "Scattering number distribution (black carbon)"
     ScatNumEnsembleBC.attrs["standard_name"] = "scattering_number_distribution (black carbon)"
     ScatNumEnsembleBC.attrs["units"] = "cm-3 per bin"
+    
+    if deltaSize == 0:
+        SpecSizeBins_ = np.zeros(num_bins)
+        #SpecSizeBins_[0] = SpecSizeBins[0]
+        for i in range(1,num_bins+1):
+            SpecSizeBins_[i-1] = np.sqrt(SpecSizeBins[i-1]*SpecSizeBins[i])
     
     SpecSizeBins = xr.DataArray(SpecSizeBins, dims=('num_bins'))
     SpecSizeBins.attrs["long_name"] = "Spectra size bin centers"
