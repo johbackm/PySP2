@@ -443,16 +443,21 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
     ScatNumEnsembleBC.attrs["standard_name"] = "scattering_number_distribution (black carbon)"
     ScatNumEnsembleBC.attrs["units"] = "cm-3 per bin"
     
-    if deltaSize == 0:
+    if deltaSize != 0:
+        SpecSizeBins = xr.DataArray(SpecSizeBins, dims=('num_bins'))
+        SpecSizeBins.attrs["long_name"] = "Spectra size bin centers"
+        SpecSizeBins.attrs["standard_name"] = "particle_diameter"
+        SpecSizeBins.attrs["units"] = "um"        
+    else:
         SpecSizeBins_ = np.zeros(num_bins)
         #SpecSizeBins_[0] = SpecSizeBins[0]
         for i in range(1,num_bins+1):
             SpecSizeBins_[i-1] = np.sqrt(SpecSizeBins[i-1]*SpecSizeBins[i])
-    
-    SpecSizeBins = xr.DataArray(SpecSizeBins, dims=('num_bins'))
-    SpecSizeBins.attrs["long_name"] = "Spectra size bin centers"
-    SpecSizeBins.attrs["standard_name"] = "particle_diameter"
-    SpecSizeBins.attrs["units"] = "um"
+        SpecSizeBins = xr.DataArray(SpecSizeBins_, dims=('num_bins'))
+        SpecSizeBins.attrs["long_name"] = "Spectra size bin centers"
+        SpecSizeBins.attrs["standard_name"] = "particle_diameter"
+        SpecSizeBins.attrs["units"] = "um"    
+
     
     psd_ds = xr.Dataset({'time': time,
                          'num_bins': SpecSizeBins,
