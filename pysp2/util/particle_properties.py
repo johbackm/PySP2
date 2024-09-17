@@ -132,7 +132,7 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
     return output_ds
 
 
-def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_interval=10,deadtime_correction=False):
+def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_interval=10, deadtime_correction=False):
     """
     Processes the Scattering and BC mass size distributions:
 
@@ -256,17 +256,27 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         ind = np.searchsorted(SpecSizeBins + deltaSize / 2,
                               ScatDiaBC50[the_particles_scat], side='right')
         #np.add.at(ScatNumEnsembleBC[t,:], ind, OneOfEvery)
-        np.add.at(ScatNumEnsembleBC[t,:], ind, OneOfEvery[the_particles_scat])
-        
+        if deltaSize==0:
+            np.add.at(ScatNumEnsembleBC[t,:], ind-1, OneOfEvery[the_particles_scat])
+        else:
+            np.add.at(ScatNumEnsembleBC[t,:], ind, OneOfEvery[the_particles_scat])
+            
         # Remove oversize particles
         the_particles_scat = np.logical_and.reduce(
             (the_particles, ScatDiaSO4 < SpecSizeBins[-1] + deltaSize / 2))
         ind = np.searchsorted(SpecSizeBins + deltaSize / 2, ScatDiaSO4[the_particles_scat], side='right')
         #np.add.at(ScatNumEnsemble[t,:], ind, OneOfEvery)
-        np.add.at(ScatNumEnsemble[t,:], ind, OneOfEvery[the_particles_scat])
+        if deltaSize==0:
+            np.add.at(ScatNumEnsemble[t,:], ind-1, OneOfEvery[the_particles_scat])
+        else:
+            np.add.at(ScatNumEnsemble[t,:], ind, OneOfEvery[the_particles_scat])
         #np.add.at(ScatMassEnsemble[t,:], ind, OneOfEvery * ScatMassSO4[the_particles_scat])
-        np.add.at(ScatMassEnsemble[t,:], ind, np.multiply(
-            OneOfEvery[the_particles_scat], ScatMassSO4[the_particles_scat]))
+        if deltaSize==0:
+            np.add.at(ScatMassEnsemble[t,:], ind-1, np.multiply(
+                OneOfEvery[the_particles_scat], ScatMassSO4[the_particles_scat]))
+        else:
+            np.add.at(ScatMassEnsemble[t,:], ind, np.multiply(
+                OneOfEvery[the_particles_scat], ScatMassSO4[the_particles_scat]))
         
         the_particles = np.logical_and.reduce((parts_time, incand_accept))
         # Remove oversize particles
@@ -275,10 +285,17 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         ind = np.searchsorted(SpecSizeBins + deltaSize / 2, 
                               SizeIncandOnly[the_particles_incan], side='right')
         #np.add.at(IncanNumEnsemble[t,:], ind, OneOfEvery)
-        np.add.at(IncanNumEnsemble[t,:], ind, OneOfEvery[the_particles_incan])
+        if deltaSize==0:
+            np.add.at(IncanNumEnsemble[t,:], ind-1, OneOfEvery[the_particles_incan])
+        else:
+            np.add.at(IncanNumEnsemble[t,:], ind, OneOfEvery[the_particles_incan])
         #np.add.at(IncanMassEnsemble[t,:], ind, OneOfEvery * sootMass[the_particles_incan])
-        np.add.at(IncanMassEnsemble[t,:], ind, np.multiply(
-            OneOfEvery[the_particles_incan], sootMass[the_particles_incan]))
+        if deltaSize==0:
+            np.add.at(IncanMassEnsemble[t,:], ind-1, np.multiply(
+                OneOfEvery[the_particles_incan], sootMass[the_particles_incan]))
+        else:      
+            np.add.at(IncanMassEnsemble[t,:], ind, np.multiply(
+                OneOfEvery[the_particles_incan], sootMass[the_particles_incan]))
         
         scat_parts = np.logical_and(scatter_accept, parts_time)
         incan_parts = np.logical_and(incand_accept, parts_time)
@@ -457,7 +474,7 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         SpecSizeBins = xr.DataArray(SpecSizeBins_, dims=('num_bins'))
         SpecSizeBins.attrs["long_name"] = "Spectra size bin centers"
         SpecSizeBins.attrs["standard_name"] = "particle_diameter"
-        SpecSizeBins.attrs["units"] = "um"    
+        SpecSizeBins.attrs["units"] = "um"
 
     
     psd_ds = xr.Dataset({'time': time,
