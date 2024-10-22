@@ -78,9 +78,9 @@ def read_multi_hk_file(file_path):
         The path (with wildcards) to the housekeeping files.
         Examples: 
             Read all .hk files in one directoy:
-                my_hk = pysp2.io.read_multi_hk_file(/path/to/directory/*.hk')
+                my_hk = pysp2.io.read_multi_hk_file('/path/to/directory/*.hk')
             Read all .hk files and check in the subdirectories as well.
-                my_hk = pysp2.io.read_multi_hk_file(/path/to/directory/**/*.hk')
+                my_hk = pysp2.io.read_multi_hk_file('/path/to/directory/**/*.hk')
                 
     Returns
     -------
