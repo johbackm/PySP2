@@ -34,6 +34,7 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
     rejectFtPosTotal = 0
     if Globals is None:
         Globals = DMTGlobals()
+        print('Warning: Using DMTGlobal as default. To avoid this warning, define Globals!=None as input variable to function call calc_diams_massess()')
 
     PkHt_ch0 = np.nanmax(np.stack([input_ds['PkHt_ch0'].values, input_ds['FtAmp_ch0'].values]), axis=0)
     PkHt_ch4 = np.nanmax(np.stack([input_ds['PkHt_ch4'].values, input_ds['FtAmp_ch4'].values]), axis=0)
@@ -111,7 +112,7 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
         #Low gain soot masses for large particles (second calibration curve)
         bl = PkHt_ch5 >= Globals.IncanUsePeakHt2CalAfter
         sootMass_sat[bl] = factor * 1e-3 * (
-                Globals.c0Mass3 + Globals.c1Mass3*PkHt_ch5[bl]**Globals.c3Mass3 + Globals.c2Mass3*PkHt_ch5[bl]**2)  
+                Globals.c0Mass3 + Globals.c1Mass3*PkHt_ch5[bl]**Globals.c3Mass3 + Globals.c2Mass3*PkHt_ch5[bl]**2)
     sootDiam_sat = (sootMass_sat/(0.5236e-9*Globals.densityBC))**(1./3.)
     sootMass_not_sat = np.where(accepted_incand, sootMass_not_sat, np.nan)
     sootMass_sat = np.where(accepted_incand, sootMass_sat, np.nan)
@@ -132,7 +133,7 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None):
     return output_ds
 
 
-def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_interval=10, deadtime_correction=False):
+def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_interval=10, deadtime_correction=False, Globals=None):
     """
     Processes the Scattering and BC mass size distributions:
 
@@ -151,13 +152,21 @@ def process_psds(particle_ds, hk_ds, config, deltaSize=0.005, num_bins=199, avg_
         The number of size bins
     avg_interval: int
         The time in seconds to average the concentrations into.
+    Globals: DMTGlobals structure or None
+        DMTGlobals structure containing calibration coefficients. Set to
+        None to use default values for MOSAiC.
 
     Returns
     -------
     psd_ds: xarray Dataset
         The xarray Dataset containing the time-averaged particle statistics.
     """
-    DMTGlobal = DMTGlobals()
+    if Globals == None:
+        DMTGlobal = DMTGlobals()
+        print('Warning: Using DMTGlobal as default. To avoid this warning, define Globals!=None as input variable to function call process_psds()')
+    else:
+        DMTGlobal = Globals
+        
     #Housekeeping 'Timestamp' is in seconds since 01-01-1904 00:00:00 UTC
     time_bins = np.arange(hk_ds['Timestamp'].values[0], 
                           hk_ds['Timestamp'].values[-1],
