@@ -110,6 +110,8 @@ def gaussian_fit(my_ds, config, parallel=False, num_records=None):
     """
     if num_records is None:
         num_records = len(my_ds.Res8.values)
+    else:
+        my_ds = my_ds.isel(event_index=range(num_records))
 
     num_trig_pts = int(config['Acquisition']['Pre-Trig Points'])
     start_time = time.time()
@@ -384,7 +386,7 @@ def _fit_record_gaussian(my_ds, record_number):
         coeff, var_matrix = curve_fit(_gaus, bins_fit, data_fit, p0=p0, method='lm', maxfev=40, ftol=1e-3)
         amplitude = coeff[0]
         peakpos = coeff[1]
-        width = coeff[2] * (2.35482)
+        width = np.abs(coeff[2]) * (2.35482)
         base = coeff[3]
         fit_data = _gaus(np.array(bins, dtype=np.float64), *coeff)
         chi2 = chisquare(np.array(data, dtype='float64'), f_exp=np.array(fit_data, dtype='float64'))
@@ -572,7 +574,7 @@ def _gaussian_sat_fit(my_ds, record_number):
         chi2 = chisquare(np.array(data, dtype='float64'), f_exp=np.array(fit_data, dtype='float64'))
         fitamplitude = coeff[0]
         fitpos = coeff[1]
-        width = coeff[2]*(2.35482)
+        width = np.abs(coeff[2]) * (2.35482)
         base = coeff[3]
         if not (fitamplitude > 1 and fitpos > 0 and width < len(data) and width < fitamplitude and width > 0):
             fitamplitude = np.nan
