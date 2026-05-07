@@ -69,7 +69,7 @@ def calc_diams_masses(input_ds, debug=True, factor=1.0, Globals=None, leo_fits=F
         print("Number of scattering particles rejected for peak pos. = %d" % rejectFtPosTotal)
 
     PkHt_ch1 = input_ds['PkHt_ch1'].values
-    rejectMinIncandTotal = np.sum(PkHt_ch0 < Globals.IncanMinPeakHt1)
+    rejectMinIncandTotal = np.sum(PkHt_ch1 < Globals.IncanMinPeakHt1)
     PkHt_ch5 = input_ds['PkHt_ch5'].values
     width_ch1 = input_ds['PkEnd_ch1'].values - input_ds['PkStart_ch1'].values
     width_ch5 = input_ds['PkEnd_ch5'].values - input_ds['PkStart_ch5'].values
