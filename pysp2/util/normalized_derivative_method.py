@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import xarray as xr
+import matplotlib.pyplot as plt
 
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -54,7 +55,7 @@ def central_difference(S, num_records=None, normalize=True, baseline_to_zero=Tru
     if num_records is None:
         num_records = S.sizes['event_index']
 
-    dt = 200e-9
+    dt = 0.4
     channels = ['Data_ch0', 'Data_ch4']
     dSdt = {}
 
@@ -120,7 +121,6 @@ def plot_normalized_derivative(S, ds, record_no, chn=0, plot_scattering_signal=F
     ax: matplotlib Axes
         The axes object containing the plot.
     """
-    import matplotlib.pyplot as plt
 
     if chn not in [0, 4]:
         raise ValueError("Channel number must be 0 or 4.")
@@ -131,8 +131,8 @@ def plot_normalized_derivative(S, ds, record_no, chn=0, plot_scattering_signal=F
     inp_data['time'] = xr.DataArray(np.array(time[np.newaxis]),
                                     dims=['time'])
 
-    bins = np.arange(0, 0.00004-0.3e-6, 0.4e-6)  # 0 to 0.0004 microseconds in steps of 0.4e-6 seconds
-    bins = bins*1e6  # convert to microseconds for plotting
+    bins = np.arange(0, 40, 0.4)  # 0 to 39 in steps of 0.4
+    #bins = bins*1e6  # convert to microseconds for plotting
 
     ch_name = f'Data_ch{chn}'
     plt.figure(figsize=(10, 6))
@@ -145,8 +145,9 @@ def plot_normalized_derivative(S, ds, record_no, chn=0, plot_scattering_signal=F
     )
 
     ax.set_xlim([bins[0], bins[-1]])
-    ax.set_xlabel('Time ($\\mu$s)')
-    ax.set_ylabel('Normalized Derivative')
+    ax.set_xlabel(r'Time ($\mu$s)')
+    ax.set_ylim([-1.0,1.0])
+    ax.set_ylabel(r'Normalized Derivative ($\rm \mu s^{-1}$)')
 
     # --- Secondary axis: scattering signal ---
     if plot_scattering_signal:
@@ -189,15 +190,13 @@ def _resolve_peakfit_window(
     """
     Build the MLE fit window from PySP2 peak-fit outputs.
 
-    Left bound:
-        PkStart_ch{peak_ch}
-
-    Right bound:
-        PkStart_ch{peak_ch} + width
+    The window is restricted to the leading edge only:
+        - Left bound: max(min_start, PkStart_chX)
+        - Right bound: min(PkPos_chX, PkStart_chX + width)
 
     where width is either:
-        - PkFWHM_ch{peak_ch}, or
-        - PkFWHM_ch{peak_ch} converted to FWTM if requested
+        - PkFWHM_chX, or
+        - PkFWHM_chX converted to FWTM if requested
 
     Returns
     -------
@@ -205,7 +204,6 @@ def _resolve_peakfit_window(
     """
     # --- Normalize channel input ---
     if isinstance(ch, str):
-        # Expect something like "Data_ch0"
         if "ch" not in ch:
             raise ValueError(f"Cannot infer channel from {ch}")
         ch_num = int(ch.split("ch")[-1])
@@ -213,18 +211,24 @@ def _resolve_peakfit_window(
         ch_num = int(ch)
 
     start_var = f"PkStart_ch{ch_num}"
+    pos_var = f"PkPos_ch{ch_num}"
     width_var = f"PkFWHM_ch{ch_num}"
 
     if start_var not in peak_ds:
         raise ValueError(f"{start_var} not found in dataset")
+    if pos_var not in peak_ds:
+        raise ValueError(f"{pos_var} not found in dataset")
     if width_var not in peak_ds:
         raise ValueError(f"{width_var} not found in dataset")
 
     pk_start = float(peak_ds[start_var].isel({event_dim: event_index}).values)
+    pk_pos = float(peak_ds[pos_var].isel({event_dim: event_index}).values)
     pk_fwhm = float(peak_ds[width_var].isel({event_dim: event_index}).values)
 
     if not np.isfinite(pk_start):
         raise ValueError(f"Invalid peak start: {pk_start}")
+    if not np.isfinite(pk_pos):
+        raise ValueError(f"Invalid peak position: {pk_pos}")
     if not np.isfinite(pk_fwhm) or pk_fwhm <= 0:
         raise ValueError(f"Invalid peak width: {pk_fwhm}")
 
@@ -235,8 +239,17 @@ def _resolve_peakfit_window(
     else:
         raise ValueError("width_metric must be 'fwhm' or 'fwtm'")
 
+    # Left bound from the fitted peak start, but never before min_start.
     fit_start = max(min_start, int(np.floor(pk_start)))
-    fit_stop = int(np.ceil(fit_start + width))
+
+    # Width-based upper bound.
+    width_stop = int(np.ceil(fit_start + width))
+
+    # Leading-edge-only upper bound: stop before the peak maximum.
+    peak_stop = int(np.floor(pk_pos))
+
+    # Use the earlier of the two, so the window stays on the leading edge.
+    fit_stop = min(width_stop, peak_stop)
 
     if n_samples is not None:
         fit_stop = min(fit_stop, n_samples)
@@ -247,6 +260,7 @@ def _resolve_peakfit_window(
     return fit_start, fit_stop, {
         "ch": ch_num,
         "pk_start": pk_start,
+        "pk_pos": pk_pos,
         "pk_fwhm": pk_fwhm,
         "width_metric": width_metric,
     }
@@ -316,6 +330,10 @@ def _to_dataarray(
         )
 
     raise TypeError(f"{name} must be an xarray DataArray or Dataset.")
+
+def _baseline_to_zero(s_event: np.ndarray) -> np.ndarray:
+    """Shift one event's signal so its minimum is 0, matching central_difference's baseline_to_zero."""
+    return s_event - np.nanmin(s_event)
 
 def _moteki_kondo_subset_statistics(
     yk: np.ndarray,
@@ -397,6 +415,7 @@ def mle_tau_moteki_kondo(
     tau_grid: Optional[Union[np.ndarray, xr.DataArray]] = None,
     min_start: int = 15,
     width_metric: str = "fwhm",
+    baseline_to_zero: bool = True,
     config: Optional[MLEConfig] = None,
 ) -> xr.DataArray:
     """
@@ -427,6 +446,8 @@ def mle_tau_moteki_kondo(
         Minimum allowed start index to exclude unusable early samples.
     width_metric : str
         "fwhm" or "fwtm" for defining peak width.
+    baseline_to_zero : bool
+        If True, shift the selected scattering signal so its minimum is zero.
     config : MLEConfig
         Calibration / noise / grid settings.
     """
@@ -458,7 +479,7 @@ def mle_tau_moteki_kondo(
     # --- Peak-based fit window ---
     # This ensures the MLE only evaluates subsets within the Gaussian peak region.
     fit_start, fit_stop, _ = _resolve_peakfit_window(
-        S_original,
+        peak_ds=S_original,
         event_index=event_index,
         ch=ch,
         event_dim=event_dim,
@@ -551,6 +572,8 @@ def mle_tau_moteki_kondo(
 
     # Extract event
     s_event = S_std.sel({event_dim: event_index}).values
+    if baseline_to_zero:
+        s_event = _baseline_to_zero(s_event)
     y_event = y_std.sel({event_dim: event_index}).values
 
     tau_hat_1d = _tau_hat_for_one_event(s_event, y_event)
@@ -577,6 +600,7 @@ def compute_d2_moteki_kondo(
     y_sample_dim: Optional[str] = None,
     min_start=15,
     width_metric="fwhm",
+    baseline_to_zero: bool = True,
     config: Optional[MLEConfig] = None,
 ) -> xr.DataArray:
     """
@@ -610,6 +634,8 @@ def compute_d2_moteki_kondo(
         Minimum allowed start index to exclude unusable early samples.
     width_metric : str
         "fwhm" or "fwtm" for defining peak width.
+    baseline_to_zero : bool
+        If True, shift the selected scattering signal so its minimum is zero.
     config : MLEConfig
         Calibration / noise / grid settings.
 
@@ -667,7 +693,7 @@ def compute_d2_moteki_kondo(
 
    # --- Same peak-based window as MLE ---
     fit_start, fit_stop, _ = _resolve_peakfit_window(
-        S_original,
+        peak_ds=S_original,
         event_index=event_index,
         ch=ch,
         event_dim=event_dim,
@@ -693,6 +719,8 @@ def compute_d2_moteki_kondo(
     t = np.arange(n_samples) * h
 
     s_event = S_std.sel({event_dim: event_index}).values
+    if baseline_to_zero:
+        s_event = _baseline_to_zero(s_event)
     y_event = y_std.sel({event_dim: event_index}).values
 
     d2_vals = np.full(k_values.size, np.nan)
@@ -722,3 +750,823 @@ def compute_d2_moteki_kondo(
         name="d2",
         attrs={"fit_start": fit_start, "fit_stop": fit_stop}
     )
+
+def compute_sigma_moteki_kondo(
+    S: Union[xr.DataArray, xr.Dataset],
+    norm_deriv: Union[xr.DataArray, xr.Dataset],
+    tau_hat: Union[np.ndarray, xr.DataArray],
+    d2: Union[np.ndarray, xr.DataArray],
+    p: int = 11,
+    *,
+    ch: Optional[str] = None,
+    event_index: int,
+    event_dim: str = "event_index",
+    S_sample_dim: Optional[str] = None,
+    y_sample_dim: Optional[str] = None,
+    min_start: int = 15,
+    width_metric: str = "fwhm",
+    d2_threshold: float = 20.0,
+    baseline_to_zero: bool = True,
+    config: Optional[MLEConfig] = None,
+) -> xr.Dataset:
+    """
+    Estimate Gaussian width sigma using the Moteki & Kondo method.
+
+    1. Use the same peak-based window as the tau/d2 routines.
+       - Left bound: PkStart_chX
+       - Right bound: PkStart_chX + width derived from PkFWHM_chX
+    2. Determine kbest as the subset index that minimizes d²(k).
+    3. Use tau_hat[kbest] as tau_best.
+    4. Fit the linear relation y_i = a (t_i - tau_best) on the kbest sub-array
+       using weighted least squares with weights 1 / (δy_i)_ran².
+    5. Convert slope to width by sigma = sqrt(-1 / a).
+
+    Notes
+    -----
+    The paper applies the sigma estimate after requiring d²(kbest) < 20. This is 
+    aligned with Moteki and Kondo (2008). For consistency, this function returns 
+    sigma_hat = NaN when the threshold is not met, while still returning diagnostic fields.
+
+    Parameters
+    ----------
+    baseline_to_zero : bool
+        If True, shift the selected scattering signal so its minimum is zero.
+    """
+    if config is None:
+        raise ValueError("config must be provided.")
+
+    # Convert datasets to DataArrays if needed.
+    S_original = S
+    S = _to_dataarray(S, "S", ch=ch)
+    norm_deriv = _to_dataarray(norm_deriv, "norm_deriv", ch=ch)
+
+    # Require event dimension.
+    if event_dim not in S.dims:
+        raise ValueError(f"{event_dim!r} not found in S.dims={S.dims}")
+    if event_dim not in norm_deriv.dims:
+        raise ValueError(f"{event_dim!r} not found in norm_deriv.dims={norm_deriv.dims}")
+
+    # Infer sample dimensions if not provided.
+    if S_sample_dim is None:
+        s_non_event_dims = [d for d in S.dims if d != event_dim]
+        if len(s_non_event_dims) != 1:
+            raise ValueError(
+                f"Could not infer S sample dim. Non-event dims in S: {s_non_event_dims}"
+            )
+        S_sample_dim = s_non_event_dims[0]
+
+    if y_sample_dim is None:
+        y_non_event_dims = [d for d in norm_deriv.dims if d != event_dim]
+        if len(y_non_event_dims) != 1:
+            raise ValueError(
+                f"Could not infer norm_deriv sample dim. Non-event dims in norm_deriv: {y_non_event_dims}"
+            )
+        y_sample_dim = y_non_event_dims[0]
+
+    # Standardize sample dimension name.
+    S_std = S.rename({S_sample_dim: "sample"})
+    y_std = norm_deriv.rename({y_sample_dim: "sample"})
+    S_std, y_std = xr.align(S_std, y_std, join="inner")
+
+    if event_index < 0 or event_index >= S_std.sizes[event_dim]:
+        raise ValueError(
+            f"event_index must be in [0, {S_std.sizes[event_dim] - 1}], got {event_index}"
+        )
+
+    n_samples = S_std.sizes["sample"]
+
+    # Same internal peak-based window used by the tau and d2 routines.
+    fit_start, fit_stop, _ = _resolve_peakfit_window(
+        peak_ds=S_original,
+        event_index=event_index,
+        ch=ch if ch is not None else "Data_ch0",
+        event_dim=event_dim,
+        min_start=min_start,
+        width_metric=width_metric,
+        n_samples=n_samples,
+    )
+
+    k_values = np.arange(fit_start, fit_stop - p + 1)
+    if k_values.size == 0:
+        raise ValueError(
+            f"No valid k subsets for p={p} inside window [{fit_start}, {fit_stop})."
+        )
+
+    tau_hat_np = np.asarray(
+        tau_hat.data if isinstance(tau_hat, xr.DataArray) else tau_hat,
+        dtype=float,
+    )
+    d2_np = np.asarray(
+        d2.data if isinstance(d2, xr.DataArray) else d2,
+        dtype=float,
+    )
+
+    if tau_hat_np.ndim != 1:
+        raise ValueError("tau_hat must be 1D.")
+    if d2_np.ndim != 1:
+        raise ValueError("d2 must be 1D.")
+    if tau_hat_np.size != k_values.size:
+        raise ValueError(
+            f"tau_hat length mismatch. Expected {k_values.size}, got {tau_hat_np.size}."
+        )
+    if d2_np.size != k_values.size:
+        raise ValueError(
+            f"d2 length mismatch. Expected {k_values.size}, got {d2_np.size}."
+        )
+
+    finite = np.isfinite(d2_np) & np.isfinite(tau_hat_np)
+    if not np.any(finite):
+        raise ValueError("No finite d2/tau_hat values available to determine kbest.")
+
+    # Moteki & Kondo Appendix A parameters.
+    h = float(config.h)
+    sigma_bar = float(config.sigma_bar)
+    delta_sigma = float(config.delta_sigma)
+    A1, A2, A3 = float(config.A1), float(config.A2), float(config.A3)
+
+    if h <= 0:
+        raise ValueError("config.h must be positive.")
+    if sigma_bar <= 0:
+        raise ValueError("config.sigma_bar must be positive.")
+    if delta_sigma < 0:
+        raise ValueError("config.delta_sigma must be >= 0.")
+
+    # Time axis in the same units used by the MLE routines.
+    t = np.arange(n_samples, dtype=float) * h
+
+    # Select the requested event.
+    s_event = np.asarray(S_std.sel({event_dim: event_index}).values, dtype=float)
+    if baseline_to_zero:
+        s_event = _baseline_to_zero(s_event)
+    y_event = np.asarray(y_std.sel({event_dim: event_index}).values, dtype=float)
+
+    if not (np.all(np.isfinite(s_event)) and np.all(np.isfinite(y_event))):
+        raise ValueError(f"Selected event_index={event_index} contains non-finite values.")
+
+    # kbest is the subset index that minimizes d²(k) [Appendix A.5].
+    kbest_local = int(np.nanargmin(np.where(finite, d2_np, np.nan)))
+    kbest = int(k_values[kbest_local])
+    tau_best = float(tau_hat_np[kbest_local])
+    d2_best = float(d2_np[kbest_local])
+
+    # Paper-consistent acceptance test: only proceed when d²(kbest) is small enough.
+    accepted = bool(np.isfinite(d2_best) and (d2_best < d2_threshold))
+
+    # The kbest sub-array used in Appendix A.6.
+    yk = y_event[kbest : kbest + p]
+    sk = s_event[kbest : kbest + p]
+    tk = t[kbest : kbest + p]
+
+    if not (np.all(np.isfinite(yk)) and np.all(np.isfinite(sk))):
+        raise ValueError("kbest sub-array contains non-finite values.")
+
+    # Random-error model from Appendix A.3:
+    #   (δy_i)_ran = Af_d / h * (1 / S_i) * δS_i
+    # with δS_i = sqrt(A1^2 + A2^2 S_i + A3^2 S_i^2)
+    Af_d = np.sqrt(130.0) / 12.0
+    deltaS = np.sqrt(A1 * A1 + (A2 * A2) * sk + (A3 * A3) * (sk * sk))
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        var_rand = (Af_d * Af_d) / (h * h) * (deltaS * deltaS) / (sk * sk)
+
+    if not np.all(np.isfinite(var_rand)) or np.any(var_rand <= 0):
+        raise ValueError("Invalid random-variance weights in the kbest sub-array.")
+
+    # Appendix A.6:
+    # Fit y_i = a (t_i - tau_best) with weights 1 / (δy_i)_ran^2.
+    x = tk - tau_best
+    denom = np.sum((x * x) / var_rand)
+    if denom <= 0 or not np.isfinite(denom):
+        raise ValueError("Degenerate weighted least-squares system for sigma estimation.")
+
+    # Weighted slope estimate for the zero-intercept linear model.
+    a = np.sum((x * yk) / var_rand) / denom
+
+    # Appendix A.6: sigma = sqrt(-1 / a)
+    if accepted and np.isfinite(a) and a < 0:
+        sigma_hat = float(np.sqrt(-1.0 / a))
+    else:
+        sigma_hat = np.nan
+
+    out = xr.Dataset(
+        data_vars={
+            "sigma_hat": xr.DataArray(
+                sigma_hat,
+                attrs={
+                    "long_name": "Moteki & Kondo Gaussian width sigma",
+                    "units": "time units of t",
+                },
+            ),
+            "slope": xr.DataArray(
+                float(a),
+                attrs={"long_name": "Weighted least-squares slope a"},
+            ),
+            "tau_best": xr.DataArray(
+                tau_best,
+                attrs={"long_name": "tau associated with kbest"},
+            ),
+            "kbest": xr.DataArray(
+                kbest,
+                attrs={"long_name": "Subset index minimizing d2"},
+            ),
+            "d2_best": xr.DataArray(
+                d2_best,
+                attrs={"long_name": "Minimum d2 value at kbest"},
+            ),
+            "accepted": xr.DataArray(
+                accepted,
+                attrs={"long_name": f"True when d2_best < {d2_threshold}"},
+            ),
+            "fit_start": xr.DataArray(fit_start),
+            "fit_stop": xr.DataArray(fit_stop),
+        },
+        attrs={
+            "method": "Moteki & Kondo weighted least-squares sigma estimate",
+            "width_metric": width_metric,
+            "d2_threshold": d2_threshold,
+        },
+    )
+    return out
+
+def compute_normalized_incident_irradiance_moteki_kondo(
+    sigma_out: xr.Dataset,
+    t_vals: Optional[Union[np.ndarray, xr.DataArray]] = None,
+    sample_dim: str = "time",
+) -> xr.DataArray:
+    """
+    Compute the normalized incident irradiance I(t)/I0 using the Moteki & Kondo
+    Gaussian beam model:
+
+        I(t) / I0 = exp(-(t - tau_best)^2 / (2 * sigma_hat^2))    [Eq. (1)]
+
+    Parameters
+    ----------
+    sigma_out : xr.Dataset
+        Output from compute_sigma_moteki_kondo(...). Must contain at least:
+        - sigma_hat
+        - tau_best
+        and ideally fit_start / fit_stop.
+    t_vals : 1D array-like, optional
+        Explicit time axis (same units as tau_best and sigma_hat). If None, 
+        defaults to 0–39.6 µs at 0.4 µs spacing.
+    sample_dim : str, default "time"
+        Name of the returned sample dimension.
+
+    Returns
+    -------
+    xr.DataArray
+        Normalized incident irradiance I/I0 evaluated on the chosen time axis.
+    """
+    if "sigma_hat" not in sigma_out:
+        raise ValueError("sigma_out must contain 'sigma_hat'.")
+    if "tau_best" not in sigma_out:
+        raise ValueError("sigma_out must contain 'tau_best'.")
+
+    sigma_hat = float(np.asarray(sigma_out["sigma_hat"].item()))
+    tau_best = float(np.asarray(sigma_out["tau_best"].item()))
+
+    if not np.isfinite(sigma_hat) or sigma_hat <= 0:
+        raise ValueError(f"Invalid sigma_hat={sigma_hat}.")
+    if not np.isfinite(tau_best):
+        raise ValueError(f"Invalid tau_best={tau_best}.")
+
+    # Default SP2 waveform time axis:
+    # 100 samples spanning 0–39.6 µs at 0.4 µs spacing.
+    if t_vals is None:
+        t_vals = np.arange(0.0, 40.0, 0.4)
+    else:
+        t_vals = np.asarray(
+            t_vals.data if isinstance(t_vals, xr.DataArray) else t_vals,
+            dtype=float,
+        )
+
+        if t_vals.ndim != 1:
+            raise ValueError("t_vals must be one-dimensional.")
+
+    # Moteki & Kondo Eq. (1): normalized irradiance profile.
+    i_norm = np.exp(-((t_vals - tau_best) ** 2) / (2.0 * sigma_hat ** 2))
+
+    out = xr.DataArray(
+        i_norm,
+        dims=(sample_dim,),
+        coords={sample_dim: t_vals},
+        name="I_over_I0",
+        attrs={
+            "long_name": "Normalized incident irradiance I/I0",
+            "description": "Gaussian incident irradiance normalized by its peak I0",
+            "tau_best": tau_best,
+            "sigma_hat": sigma_hat,
+        },
+    )
+    return out
+
+def plot_incident_irradiance(
+    S: xr.Dataset,
+    ds: xr.Dataset,
+    record_no: int,
+    chn: int = 0,
+    plot_scattering_signal: bool = True,
+    sigma_ds: Optional[xr.Dataset] = None,
+    tau: Optional[float] = None,
+    sigma: Optional[float] = None,
+    h: float = 0.4,
+    time_units: str = "us",
+    show_fit_window: bool = True,
+):
+    """
+    Plot normalized derivative S'(t)/S(t), expected I'(t)/I(t), and optionally
+    the scattering signal and normalized incident irradiance, all against the
+    same bins-based time axis.
+
+    Parameters
+    ----------
+    S : xr.Dataset
+        Dataset containing the normalized derivative S'(t)/S(t).
+    ds : xr.Dataset
+        Dataset containing the scattering signal S(t).
+    record_no : int
+        Event index to plot.
+    chn : int, default 0
+        Channel number (0 or 4) to select the appropriate data variable.
+    plot_scattering_signal : bool, default True
+        If True, overlay the scattering signal and normalized incident irradiance.
+    sigma_ds : xr.Dataset, optional
+        Dataset containing sigma_hat and tau_best for the event. If provided,
+        these values will be used for plotting the expected I'/I line.
+    tau : float, optional
+        If sigma_ds is not provided, tau must be supplied for plotting the expected I'/I line.
+    sigma : float, optional
+        If sigma_ds is not provided, sigma must be supplied for plotting the expected I'/I line.
+    h : float, default 0.4
+        Time bin width in microseconds.
+    time_units : str, default "us"
+        Time units for the x-axis. Must be either "us" (microseconds) or "s" (seconds).
+    show_fit_window : bool, default True
+        If True and sigma_ds is provided, shade the fit window region on the plot.
+
+    Returns
+    -------
+    axes : matplotlib.axes.Axes
+        The axes object containing the plot.
+    """
+    if chn not in [0, 4]:
+        raise ValueError("Channel number must be 0 or 4.")
+
+    ch_name = f"Data_ch{chn}"
+
+    if ch_name not in S.data_vars:
+        raise ValueError(f"{ch_name!r} not found in S.data_vars.")
+    if ch_name not in ds.data_vars:
+        raise ValueError(f"{ch_name!r} not found in ds.data_vars.")
+
+    spectra = ds.isel(event_index=record_no)
+
+    y_norm = np.asarray(spectra[ch_name].values, dtype=float)
+    y_scatter = np.asarray(S[ch_name].isel(event_index=record_no).values, dtype=float)
+
+    n_samples = y_norm.shape[-1]
+    if y_scatter.shape[-1] != n_samples:
+        raise ValueError(
+            f"Normalized derivative and scattering signal have different lengths: "
+            f"{n_samples} vs {y_scatter.shape[-1]}"
+        )
+
+    # Use the same bins convention everywhere.
+    t = np.arange(n_samples, dtype=float) * h
+    if time_units == "us":
+        t_plot = t
+        tau_scale = 1.0
+        x_label = r"Time ($\rm \mu$s)"
+    elif time_units == "s":
+        t_plot = t * 1e-6
+        tau_scale = 1.0e-6
+        x_label = r"Time (s)"
+    else:
+        raise ValueError("time_units must be 'us' or 's'.")
+
+    # Pull tau and sigma from sigma_ds if supplied.
+    if sigma_ds is not None:
+        if tau is None:
+            tau = float(sigma_ds["tau_best"].item())
+        if sigma is None:
+            sigma = float(sigma_ds["sigma_hat"].item())
+
+    if tau is None or sigma is None:
+        raise ValueError("Provide either sigma_ds or both tau and sigma.")
+
+    if not np.isfinite(tau) or not np.isfinite(sigma) or sigma <= 0:
+        raise ValueError(f"Invalid tau/sigma values: tau={tau}, sigma={sigma}")
+
+    tau_plot = tau * tau_scale
+    sigma_plot = sigma * tau_scale
+
+    # Expected I'/I line from Moteki & Kondo.
+    i_ratio_expected = -(t_plot - tau_plot) / (sigma_plot ** 2)
+
+    # Normalized incident irradiance I(t)/I0 from Eq. (1).
+    i_norm = np.exp(-((t_plot - tau_plot) ** 2) / (2.0 * sigma_plot ** 2))
+
+    plt.rcParams["font.family"] = "Times New Roman"
+    plt.rcParams["mathtext.fontset"] = "stix"
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Normalized derivative.
+    line1, = ax.plot(
+        t_plot,
+        y_norm,
+        "o",
+        color="blue",
+        label=f"{ch_name} (Normalized dS/dt)",
+        linewidth=1.2,
+    )
+
+    # Expected I'/I.
+    line2, = ax.plot(
+        t_plot,
+        i_ratio_expected,
+        color="blue",
+        alpha=0.5,
+        linewidth=2.0,
+        label=r"Expected $I'(t)/I(t)$",
+    )
+
+    ax.set_xlabel(x_label)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_xlim(t_plot[10], t_plot[-30])
+    ax.set_ylabel(
+        r"Normalized Derivative ($\rm \mu s^{-1}$)",
+        color="blue",
+    )
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(axis="y", colors="blue")
+
+    # Optional fit window shading.
+    if show_fit_window and sigma_ds is not None:
+        fit_start = int(sigma_ds["fit_start"].item())
+        fit_stop = int(sigma_ds["fit_stop"].item())
+
+        fit_start = max(0, min(fit_start, n_samples - 1))
+        fit_stop = max(fit_start + 1, min(fit_stop, n_samples))
+
+        ax.axvspan(
+            t_plot[fit_start],
+            t_plot[fit_stop - 1],
+            color="gray",
+            alpha=0.12,
+            label="Fit window",
+        )
+
+    # Optional scattering signal overlay + normalized incident irradiance on the right axis.
+    if plot_scattering_signal:
+        ax2 = ax.twinx()
+        y_scatter_shifted = y_scatter - np.nanmin(y_scatter)
+
+        line3, = ax2.plot(
+            t_plot,
+            y_scatter_shifted,
+            color="black",
+            linestyle="--",
+            linewidth=1.2,
+            label=f"{ch_name} (Scattering Signal)",
+        )
+
+        # TODO multiplying by the max of the scattering signal will not work
+        #      for evaporative particles
+        line4, = ax2.plot(
+            t_plot,
+            i_norm * np.nanmax(y_scatter_shifted),
+            color="red",
+            linestyle="--",
+            linewidth=2.0,
+            label=r"Normalized incident irradiance $I(t)/I_0$",
+        )
+
+        ax2.set_ylabel("Scattering Signal (baseline shifted) / $I/I_0$")
+
+        lines = [line1, line2, line3, line4]
+        labels = [l.get_label() for l in lines]
+        ax.legend(lines, labels, loc="best", fontsize=10)
+    else:
+        ax.legend(loc="best", fontsize=10)
+
+    ax.set_title(
+        f"Normalized Derivative, Expected I'(t)/I(t), and Scattering Signal - "
+        f"Channel {chn} Record {record_no}",
+        pad=20,
+    )
+
+    return ax
+
+def plot_scattering_cross_section(
+    S: Union[xr.DataArray, xr.Dataset],
+    sigma_ds: xr.Dataset,
+    record_no: int,
+    *,
+    chn: int = 0,
+    ch: Optional[str] = None,
+    event_dim: str = "event_index",
+    S_sample_dim: Optional[str] = None,
+    calibration_constant: float = (1.22e-17/2.44),  # (m²/2.44 mV)
+    h: float = 0.4,
+    time_units: str = "us",
+    show_fit_window: bool = True,
+) -> plt.Figure:
+    """
+    Plot the differential scattering cross section (scaled by calibration_constant)
+    computed from the Moteki & Kondo tau/sigma result for one event.
+
+    The cross section is computed as:
+
+        ΔC_sca(t) = calibration_constant * S(t) / I(t)
+
+    where I(t)/I0 is obtained from compute_normalized_incident_irradiance_moteki_kondo(...).
+
+    Parameters
+    ----------
+    S : xr.DataArray or xr.Dataset
+        Scattering signal.
+    sigma_ds : xr.Dataset
+        Output from the Moteki & Kondo sigma/tau workflow. Must contain:
+        - sigma_hat
+        - tau_best
+        and ideally fit_start / fit_stop.
+    record_no : int
+        Event index to plot.
+    chn : int, default 0
+        Channel number (0 or 4).
+    ch : str, optional
+        Variable name to select when S is a Dataset.
+    event_dim : str, default "event_index"
+        Event dimension name.
+    S_sample_dim : str, optional
+        Sample dimension in S.
+    calibration_constant : float, default 1.22e-17  # (m²/2.44 mV)
+        Scale factor applied to S / (I/I0).
+        Default value from Moteki & Kondo (2008).
+    h : float, default 0.4e-6
+        Sampling interval in seconds.
+    time_units : {"us", "s"}, default "us"
+        Units for the x-axis.
+    show_fit_window : bool, default True
+        Shade the fitted window if fit_start / fit_stop are present.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure object.
+    """
+    if chn not in [0, 4]:
+        raise ValueError("Channel number must be 0 or 4.")
+
+    ch_name = f"Data_ch{chn}"
+
+    # Convert S to DataArray if needed.
+    if isinstance(S, xr.Dataset):
+        if ch is not None:
+            if ch not in S.data_vars:
+                raise ValueError(f"{ch!r} not found in S.data_vars={list(S.data_vars)}")
+            S_da = S[ch]
+        else:
+            if ch_name in S.data_vars:
+                S_da = S[ch_name]
+            elif len(S.data_vars) == 1:
+                S_da = S[next(iter(S.data_vars))]
+            else:
+                raise ValueError(
+                    f"S is a Dataset with multiple variables. Provide ch. "
+                    f"Available: {list(S.data_vars)}"
+                )
+    elif isinstance(S, xr.DataArray):
+        S_da = S
+    else:
+        raise TypeError("S must be an xarray DataArray or Dataset.")
+
+    if event_dim not in S_da.dims:
+        raise ValueError(f"{event_dim!r} not found in S.dims={S_da.dims}")
+
+    # Infer sample dimension if needed.
+    if S_sample_dim is None:
+        non_event_dims = [d for d in S_da.dims if d != event_dim]
+        if len(non_event_dims) != 1:
+            raise ValueError(
+                f"Could not infer S sample dim. Non-event dims in S: {non_event_dims}"
+            )
+        S_sample_dim = non_event_dims[0]
+
+    # Validate event index.
+    if record_no < 0 or record_no >= S_da.sizes[event_dim]:
+        raise ValueError(
+            f"record_no must be in [0, {S_da.sizes[event_dim] - 1}], got {record_no}"
+        )
+
+    # Select the requested event.
+    s_event = np.asarray(
+        S_da.rename({S_sample_dim: "sample"})
+        .sel({event_dim: record_no})
+        .values,
+        dtype=float,
+    )
+
+    n_samples = s_event.size
+    if n_samples == 0:
+        raise ValueError("Selected event has no samples.")
+
+    # Use the same bins convention as plot_incident_irradiance.
+    t = np.arange(n_samples, dtype=float) * h
+    if time_units == "us":
+        t_plot = t
+        x_label = r"Time ($\rm \mu$s)"
+    elif time_units == "s":
+        t_plot = t * 1e6
+        x_label = r"Time (s)"
+    else:
+        raise ValueError("time_units must be 'us' or 's'.")
+
+    if time_units == "us":
+        t_vals_for_irradiance = t_plot 
+    else:
+        t_vals_for_irradiance = t_plot * 1e6
+
+    # Required sigma/tau outputs.
+    if "tau_best" not in sigma_ds:
+        raise ValueError("sigma_ds must contain 'tau_best'.")
+    if "sigma_hat" not in sigma_ds:
+        raise ValueError("sigma_ds must contain 'sigma_hat'.")
+
+    tau_best = float(np.asarray(sigma_ds["tau_best"].values))
+    sigma_hat = float(np.asarray(sigma_ds["sigma_hat"].values))
+
+    if not np.isfinite(tau_best) or not np.isfinite(sigma_hat) or sigma_hat <= 0:
+        raise ValueError(
+            f"Invalid tau_best/sigma_hat: tau_best={tau_best}, sigma_hat={sigma_hat}"
+        )
+    
+    # Compute normalized incident irradiance using the existing function.
+    i_norm_da = compute_normalized_incident_irradiance_moteki_kondo(
+        sigma_out=sigma_ds,
+        t_vals=t_vals_for_irradiance,
+        sample_dim="sample",
+    )
+
+    i_norm = np.asarray(i_norm_da.values, dtype=float)
+
+    if i_norm.shape != s_event.shape:
+        raise ValueError(
+            f"Incident irradiance length {i_norm.shape} does not match "
+            f"signal length {s_event.shape}."
+        )
+
+    # Differential scattering cross section, scaled.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        delta_csca = calibration_constant * (s_event / i_norm)
+        delta_csca[~np.isfinite(delta_csca)] = np.nan
+
+    plt.rcParams["font.family"] = "Times New Roman"
+    plt.rcParams["mathtext.fontset"] = "stix"
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    ax.plot(
+        t_plot,
+        delta_csca,
+        color="black",
+        linewidth=1.8,
+        label=r"$\Delta C_{\mathrm{sca}}(t)$",
+    )
+
+    if show_fit_window and "fit_start" in sigma_ds and "fit_stop" in sigma_ds:
+        fit_start = int(np.asarray(sigma_ds["fit_start"].values))
+        fit_stop = int(np.asarray(sigma_ds["fit_stop"].values))
+        fit_start = max(0, min(fit_start, n_samples - 1))
+        fit_stop = max(fit_start + 1, min(fit_stop, n_samples))
+
+        ax.axvspan(
+            t_plot[fit_start],
+            t_plot[fit_stop - 1],
+            color="gray",
+            alpha=0.15,
+            label="Fit window",
+        )
+
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(r"$\Delta C_{\mathrm{sca}}$ (m²)")
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(1e-14,1e-11)
+    ax.set_yscale("log")
+    ax.set_xlim(t_plot[10], t_plot[-30])
+    ax.legend(loc="best", fontsize=10)
+    ax.set_title(
+        f"Differential Scattering Cross Section - Channel {chn} Record {record_no}",
+        pad=14,
+    )
+
+    return fig
+
+def plot_d2(
+    d2: Union[xr.DataArray, np.ndarray],
+    *,
+    threshold: Optional[float] = None,
+    title: Optional[str] = None,
+    xlabel: str = "k",
+    ylabel: str = r"Statistical distance $d^2$",
+    log_scale: bool = True,
+    highlight_kbest: bool = True,
+) -> plt.Figure:
+    """
+    Plot the Moteki & Kondo statistical distance d^2(k) for one event.
+
+    Parameters
+    ----------
+    d2 : xr.DataArray or np.ndarray
+        Computed d^2 values, typically output from compute_d2_moteki_kondo(...).
+        Expected shape is 1D over k.
+    threshold : float, optional
+        Optional horizontal acceptance threshold line (for example, a chi-square
+        cutoff or your empirical threshold).
+    title : str, optional
+        Custom plot title. If omitted, a default title is used.
+    xlabel : str, default "k"
+        x-axis label.
+    ylabel : str, default r"Statistical distance $d^2$"
+        y-axis label.
+    log_scale : bool, default True
+        If True, use a logarithmic y-axis.
+    highlight_kbest : bool, default True
+        If True, mark the minimum finite d^2 value with a red vertical line.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The created figure.
+    """
+    d2_np = np.asarray(d2.data if isinstance(d2, xr.DataArray) else d2, dtype=float)
+
+    if d2_np.ndim != 1:
+        raise ValueError("d2 must be a 1D array or DataArray.")
+
+    k = (
+         np.asarray(d2["k"].values)
+         if isinstance(d2, xr.DataArray) and "k" in d2.coords
+         else np.arange(d2_np.size)
+     )
+
+    finite = np.isfinite(d2_np)
+    if not np.any(finite):
+        raise ValueError("No finite d2 values available to plot.")
+
+    kbest = int(np.nanargmin(np.where(finite, d2_np, np.nan)))
+
+    plt.rcParams["font.family"] = "Times New Roman"
+    plt.rcParams["mathtext.fontset"] = "stix"
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    ax.plot(
+        k,
+        d2_np,
+        color="blue",
+        marker="o",
+        markersize=4,
+        linewidth=1.2,
+        label=r"$d^2(k)$",
+    )
+
+    if highlight_kbest:
+        ax.axvline(
+            k[kbest],
+            color="red",
+            linestyle="--",
+            linewidth=1.5,
+            label=rf"$k_{{\mathrm{{best}}}}={k[kbest]}$",
+        )
+        ax.scatter(
+            [k[kbest]],
+            [d2_np[kbest]],
+            color="red",
+            s=40,
+            zorder=5,
+        )
+
+    if threshold is not None:
+        ax.axhline(
+            threshold,
+            color="gray",
+            linestyle=":",
+            linewidth=1.5,
+            label=rf"Threshold = {threshold:g}",
+        )
+
+    if log_scale:
+        ax.set_yscale("log")
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.3, which="both" if log_scale else "major")
+
+    if title is None:
+        title = r"Moteki & Kondo Statistical Distance $d^2(k)$"
+    ax.set_title(title, pad=14)
+
+    ax.legend(loc="best", fontsize=10)
+
+    return fig
