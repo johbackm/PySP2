@@ -5,7 +5,7 @@ from .peak_fit import _gaus, _do_fit_records
 
 
 def beam_shape(my_binary, beam_position_from='split point', Globals=None,
-               moving_average_window = 5, max_amplitude_fraction = 0.033):
+               moving_average_window = 15, max_amplitude_fraction = 0.033):
     """
     
     Calculates the beam shape needed to determine the laser intensity profile
@@ -209,11 +209,18 @@ def beam_shape(my_binary, beam_position_from='split point', Globals=None,
         moving_avg_ch0_profiles[i,:] =  (i_profile - np.nanmin(i_profile[:i_max])) / i_range
         #interpolate here to get the exact position in fraction (not integer) :: which posiiton (float) is the 0.03 cross in
         #and skip if it is the where the baseline is calculated
-        above_max_leo_pos = np.ndarray.flatten(np.argwhere(moving_avg_ch0_profiles[i,:] >= max_amplitude_fraction))
-        moving_avg_ch0_max_leo_pos[i] = above_max_leo_pos[above_max_leo_pos>num_base_pts_2_avg].min()-1
-        
-        moving_avg_ch0_split_to_leo_pos[i] = moving_avg_ch0_max_leo_pos[i] - mean_ch0_split_pos
-        moving_avg_ch0_max_leo_amplitude_factor[i] = 1./ moving_avg_ch0_profiles[i, np.round(moving_avg_ch0_max_leo_pos[i]).astype(int)]
+        above_max_leo_pos = np.ndarray.flatten(np.argwhere(moving_avg_ch0_profiles[i,:] > max_amplitude_fraction))
+        #moving_avg_ch0_max_leo_pos[i] = above_max_leo_pos[above_max_leo_pos>num_base_pts_2_avg].min()-1
+        y1 = above_max_leo_pos.min()
+        y0 = y1-1
+        x1 = i_profile[y1]
+        x0 = i_profile[y0]
+        y = y0 + (max_amplitude_fraction - x0)*(y1-y0)/(x1-x0) #y = the bin position (float)
+        moving_avg_ch0_max_leo_pos[i] = y
+        moving_avg_ch0_split_to_leo_pos[i] = y - mean_ch0_split_pos
+        moving_avg_ch0_max_leo_amplitude_factor[i] = 1./max_amplitude_fraction
+        #moving_avg_ch0_split_to_leo_pos[i] = moving_avg_ch0_max_leo_pos[i] - mean_ch0_split_pos
+        #moving_avg_ch0_max_leo_amplitude_factor[i] = 1./ moving_avg_ch0_profiles[i, np.round(moving_avg_ch0_max_leo_pos[i]).astype(int)]
 
     for i in range(moving_avg_ch4_profiles_.shape[0]):
         i_profile = moving_avg_ch4_profiles_[i,:]
@@ -224,11 +231,19 @@ def beam_shape(my_binary, beam_position_from='split point', Globals=None,
         moving_avg_ch4_profiles[i,:] =  (i_profile - np.nanmin(i_profile[:i_max])) / i_range
         #interpolate here to get the exact position in fraction (not integer) :: which posiiton (float) is the 0.03 cross in
         #and skip if it is the where the baseline is calculated
-        above_max_leo_pos = np.ndarray.flatten(np.argwhere(moving_avg_ch4_profiles[i,:] >= max_amplitude_fraction))
-        moving_avg_ch4_max_leo_pos[i] = above_max_leo_pos[above_max_leo_pos>num_base_pts_2_avg].min()-1
-        
-        moving_avg_ch4_split_to_leo_pos[i] = moving_avg_ch4_max_leo_pos[i] - mean_ch4_split_pos
-        moving_avg_ch4_max_leo_amplitude_factor[i] = 1./ moving_avg_ch4_profiles[i, np.round(moving_avg_ch4_max_leo_pos[i]).astype(int)]
+        above_max_leo_pos = np.ndarray.flatten(np.argwhere(moving_avg_ch4_profiles[i,:] > max_amplitude_fraction))
+        #moving_avg_ch4_max_leo_pos[i] = above_max_leo_pos[above_max_leo_pos>num_base_pts_2_avg].min()-1
+        y1 = above_max_leo_pos.min()
+        y0 = y1-1
+        x1 = i_profile[y1]
+        x0 = i_profile[y0]
+        y = y0 + (max_amplitude_fraction - x0)*(y1-y0)/(x1-x0) #y = the bin position (float)
+        moving_avg_ch4_max_leo_pos[i] = y
+        moving_avg_ch4_split_to_leo_pos[i] = y - mean_ch4_split_pos
+        moving_avg_ch4_max_leo_amplitude_factor[i] = 1./max_amplitude_fraction
+
+        #moving_avg_ch4_split_to_leo_pos[i] = moving_avg_ch4_max_leo_pos[i] - mean_ch4_split_pos
+        #moving_avg_ch4_max_leo_amplitude_factor[i] = 1./ moving_avg_ch4_profiles[i, np.round(moving_avg_ch4_max_leo_pos[i]).astype(int)]
 
     #cleaning up
     moving_avg_ch0_max_leo_pos = np.where(moving_avg_ch0_max_leo_pos < num_base_pts_2_avg, 
@@ -342,7 +357,7 @@ def beam_shape(my_binary, beam_position_from='split point', Globals=None,
                                                         method="nearest", fill_value="extrapolate")
     output_ds['leo_PkPos_ch4'] = output_ds['leo_PkPos_ch4'].interpolate_na(dim="event_index", 
                                                         method="nearest", fill_value="extrapolate")
-        
+    
     return output_ds
 
 def leo_fit(my_binary,Globals=None):
@@ -365,8 +380,8 @@ def leo_fit(my_binary,Globals=None):
     leo_base_ch0 = np.min(data_ch0_sorted[:, 0:int(num_base_pts_2_avg)], axis=1)
     leo_base_ch4 = np.min(data_ch4_sorted[:, 0:int(num_base_pts_2_avg)], axis=1)
     
-    leo_fit_max_pos_ch0 = my_binary['leo_EndPos_ch0'].astype(int).values
-    leo_fit_max_pos_ch4 = my_binary['leo_EndPos_ch4'].astype(int).values
+    leo_fit_max_pos_ch0 = np.round(my_binary['leo_EndPos_ch0']).values.astype(int)
+    leo_fit_max_pos_ch4 = np.round(my_binary['leo_EndPos_ch4']).values.astype(int)
     leo_AmpFactor_ch0 = my_binary['leo_AmpFactor_ch0'].values
     leo_AmpFactor_ch4 = my_binary['leo_AmpFactor_ch4'].values
     leo_PkHt_ch0 = np.zeros_like(my_binary['PkHt_ch0'].values)*np.nan
@@ -404,11 +419,23 @@ def leo_fit(my_binary,Globals=None):
         leo_PkHt_ch4[i] = leo_coeff[0]
         leo_PkHt_ch4[i] = (data_ch4[i, leo_fit_max_pos_ch4[i]] - leo_base_ch4[i]) * leo_AmpFactor_ch4[i]
     
+    #same criteria for all scattering particles
+    accepted = np.logical_and.reduce((
+        my_binary['PkFWHM_ch0'].values > Globals.ScatMinWidth,
+        my_binary['PkFWHM_ch0'].values < Globals.ScatMaxWidth,
+        my_binary['PkHt_ch0'].values > Globals.ScatMinPeakHt1,
+        my_binary['FtPos_ch0'].values < Globals.ScatMaxPeakPos,
+        my_binary['FtPos_ch0'].values > Globals.ScatMinPeakPos))
+    
     #Only positive and finite values
     leo_PkHt_ch0 = np.where(leo_PkHt_ch0 > 0, leo_PkHt_ch0, np.nan)
     leo_PkHt_ch4 = np.where(leo_PkHt_ch4 > 0, leo_PkHt_ch4, np.nan)
     leo_PkHt_ch0 = np.where(leo_PkHt_ch0 < np.inf, leo_PkHt_ch0, np.nan)
     leo_PkHt_ch4 = np.where(leo_PkHt_ch4 < np.inf, leo_PkHt_ch4, np.nan)
+    
+    
+    leo_PkHt_ch0 = np.where(accepted, leo_PkHt_ch0, np.nan)
+    leo_PkHt_ch4 = np.where(accepted, leo_PkHt_ch4, np.nan)
 
     output_ds = my_binary.copy()
     output_ds['leo_FtAmp_ch0'] = (('index'), leo_PkHt_ch0)
